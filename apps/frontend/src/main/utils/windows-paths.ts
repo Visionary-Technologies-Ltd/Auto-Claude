@@ -15,6 +15,17 @@ import { promisify } from 'util';
 import path from 'path';
 import os from 'os';
 
+/**
+ * Get the full path to a Windows system executable.
+ * Electron apps may not inherit COMSPEC or have System32 in PATH,
+ * so we need to use full paths for system executables.
+ */
+function getWindowsSystemExecutable(executable: string): string {
+  // Use SYSTEMROOT env var, fallback to C:\Windows
+  const systemRoot = process.env.SYSTEMROOT || process.env.SystemRoot || 'C:\\Windows';
+  return path.join(systemRoot, 'System32', executable);
+}
+
 const execFileAsync = promisify(execFile);
 
 export interface WindowsToolPaths {
@@ -149,7 +160,9 @@ export function findWindowsExecutableViaWhere(
   try {
     // Use 'where' command to find the executable
     // where.exe is a built-in Windows command that finds executables
-    const result = execFileSync('where.exe', [executable], {
+    // Use full path to where.exe because Electron apps may not have System32 in PATH
+    const whereExe = getWindowsSystemExecutable('where.exe');
+    const result = execFileSync(whereExe, [executable], {
       encoding: 'utf-8',
       timeout: 5000,
       windowsHide: true,
@@ -252,7 +265,9 @@ export async function findWindowsExecutableViaWhereAsync(
   try {
     // Use 'where' command to find the executable
     // where.exe is a built-in Windows command that finds executables
-    const { stdout } = await execFileAsync('where.exe', [executable], {
+    // Use full path to where.exe because Electron apps may not have System32 in PATH
+    const whereExe = getWindowsSystemExecutable('where.exe');
+    const { stdout } = await execFileAsync(whereExe, [executable], {
       encoding: 'utf-8',
       timeout: 5000,
       windowsHide: true,

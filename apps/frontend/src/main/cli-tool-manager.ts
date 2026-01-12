@@ -42,6 +42,20 @@ import {
 } from './utils/windows-paths';
 
 /**
+ * Get the full path to cmd.exe.
+ * Electron apps may not inherit COMSPEC or have System32 in PATH,
+ * so we need to use full paths for system executables.
+ */
+function getWindowsCmdExe(): string {
+  // Use COMSPEC if available, otherwise construct from SYSTEMROOT
+  if (process.env.COMSPEC) {
+    return process.env.COMSPEC;
+  }
+  const systemRoot = process.env.SYSTEMROOT || process.env.SystemRoot || 'C:\\Windows';
+  return path.join(systemRoot, 'System32', 'cmd.exe');
+}
+
+/**
  * Supported CLI tools managed by this system
  */
 export type CLITool = 'python' | 'git' | 'gh' | 'claude';
@@ -923,7 +937,9 @@ class CLIToolManager {
       if (needsShell) {
         // For .cmd/.bat files on Windows, use cmd.exe with argument array
         // This avoids shell command injection while handling spaces in paths
-        version = execFileSync('cmd.exe', ['/c', claudeCmd, '--version'], {
+        // Use full path to cmd.exe because Electron apps may not have System32 in PATH
+        const cmdExe = getWindowsCmdExe();
+        version = execFileSync(cmdExe, ['/c', claudeCmd, '--version'], {
           encoding: 'utf-8',
           timeout: 5000,
           windowsHide: true,
@@ -1039,7 +1055,9 @@ class CLIToolManager {
       if (needsShell) {
         // For .cmd/.bat files on Windows, use cmd.exe with argument array
         // This avoids shell command injection while handling spaces in paths
-        const result = await execFileAsync('cmd.exe', ['/c', claudeCmd, '--version'], {
+        // Use full path to cmd.exe because Electron apps may not have System32 in PATH
+        const cmdExe = getWindowsCmdExe();
+        const result = await execFileAsync(cmdExe, ['/c', claudeCmd, '--version'], {
           encoding: 'utf-8',
           timeout: 5000,
           windowsHide: true,

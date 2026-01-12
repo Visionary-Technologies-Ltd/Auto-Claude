@@ -165,11 +165,20 @@ function getMemoryPythonEnv(): Record<string, string> {
   if (app.isPackaged) {
     const bundledSitePackages = path.join(process.resourcesPath, 'python-site-packages');
     if (fs.existsSync(bundledSitePackages)) {
+      // Build paths array with pywin32 subdirectories on Windows
+      const paths = [bundledSitePackages];
+      if (process.platform === 'win32') {
+        // pywin32 requires these subdirectories for pywintypes/win32api imports
+        paths.push(path.join(bundledSitePackages, 'win32'));
+        paths.push(path.join(bundledSitePackages, 'win32', 'lib'));
+      }
+
       // Merge paths: bundled site-packages takes precedence
       const existingPath = baseEnv.PYTHONPATH || '';
+      const bundledPath = paths.join(path.delimiter);
       baseEnv.PYTHONPATH = existingPath
-        ? `${bundledSitePackages}${path.delimiter}${existingPath}`
-        : bundledSitePackages;
+        ? `${bundledPath}${path.delimiter}${existingPath}`
+        : bundledPath;
     }
   }
 

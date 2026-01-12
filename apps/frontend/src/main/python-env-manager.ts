@@ -658,6 +658,23 @@ if sys.version_info >= (3, 12):
       }
     }
 
+    // Build PYTHONPATH with bundled packages
+    // On Windows, pywin32 requires additional subdirectories (win32, win32/lib) in the path
+    // for the pywintypes module to be found correctly
+    let pythonPathValue: string | undefined;
+    if (this.sitePackagesPath) {
+      const pathSeparator = process.platform === 'win32' ? ';' : ':';
+      const paths = [this.sitePackagesPath];
+
+      // Add pywin32 subdirectories on Windows for pywintypes/win32api imports
+      if (process.platform === 'win32') {
+        paths.push(path.join(this.sitePackagesPath, 'win32'));
+        paths.push(path.join(this.sitePackagesPath, 'win32', 'lib'));
+      }
+
+      pythonPathValue = paths.join(pathSeparator);
+    }
+
     // Apply our Python configuration on top
     return {
       ...baseEnv,
@@ -668,7 +685,7 @@ if sys.version_info >= (3, 12):
       // Disable user site-packages to avoid conflicts
       PYTHONNOUSERSITE: '1',
       // Override PYTHONPATH if we have bundled packages
-      ...(this.sitePackagesPath ? { PYTHONPATH: this.sitePackagesPath } : {}),
+      ...(pythonPathValue ? { PYTHONPATH: pythonPathValue } : {}),
     };
   }
 
