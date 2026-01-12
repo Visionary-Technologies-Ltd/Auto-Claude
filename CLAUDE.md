@@ -2,6 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Fork Information (Visionary Technologies Ltd)
+
+This is a fork of [AndyMik90/Auto-Claude](https://github.com/AndyMik90/Auto-Claude) maintained by Visionary Technologies Ltd with Windows-specific fixes.
+
+**Repository:** https://github.com/Visionary-Technologies-Ltd/Auto-Claude
+
+**Git Remotes:**
+```
+origin   -> https://github.com/Visionary-Technologies-Ltd/Auto-Claude.git  # Our fork
+upstream -> https://github.com/AndyMik90/Auto-Claude.git                   # Original
+```
+
+**Syncing with Upstream:**
+```bash
+git fetch upstream
+git merge upstream/develop
+git push origin develop
+```
+
 ## Project Overview
 
 Auto Claude is a multi-agent autonomous coding framework that builds software through coordinated AI agent sessions. It uses the Claude Agent SDK to run agents in isolated workspaces with security controls.
@@ -507,3 +526,117 @@ npm run dev      # Run in development mode (includes --remote-debugging-port=922
 
 **Project data storage:**
 - `.auto-claude/specs/` - Per-project data (specs, plans, QA reports, memory) - gitignored
+
+## Windows-Specific Fixes (Our Fork)
+
+These fixes resolve critical issues when running on Windows where Electron apps don't inherit proper environment variables.
+
+### Issue 1: `spawnSync cmd.exe ENOENT`
+
+**Problem:** Electron apps may not inherit `COMSPEC` or have `System32` in PATH when spawning child processes. This causes CLI tool validation (like `claude --version`) to fail.
+
+**Symptoms:**
+- `spawnSync cmd.exe ENOENT` errors in console
+- `Failed to open terminal: spawn EPERM`
+- Claude CLI not detected even though it's installed
+
+**Fix Location:** `apps/frontend/src/main/cli-tool-manager.ts`
+
+```typescript
+function getWindowsCmdExe(): string {
+  if (process.env.COMSPEC) {
+    return process.env.COMSPEC;
+  }
+  const systemRoot = process.env.SYSTEMROOT || process.env.SystemRoot || 'C:\\Windows';
+  return path.join(systemRoot, 'System32', 'cmd.exe');
+}
+```
+
+### Issue 2: `where.exe ENOENT`
+
+**Problem:** Same PATH inheritance issue affects `where.exe` used for CLI tool detection (finding git, python, claude, etc.).
+
+**Fix Location:** `apps/frontend/src/main/utils/windows-paths.ts`
+
+```typescript
+function getWindowsSystemExecutable(executable: string): string {
+  const systemRoot = process.env.SYSTEMROOT || process.env.SystemRoot || 'C:\\Windows';
+  return path.join(systemRoot, 'System32', executable);
+}
+```
+
+### Issue 3: `ModuleNotFoundError: No module named 'pywintypes'`
+
+**Problem:** pywin32 requires additional subdirectories (`win32`, `win32/lib`) in PYTHONPATH for the pywintypes module to be found correctly on Windows.
+
+**Symptoms:**
+- `ModuleNotFoundError: No module named 'pywintypes'`
+- Python scripts fail after bypassing CLI detection
+
+**Fix Locations:**
+- `apps/frontend/src/main/python-env-manager.ts` - `getPythonEnv()` method
+- `apps/frontend/src/main/memory-service.ts` - `getMemoryPythonEnv()` function
+
+```typescript
+// Add pywin32 subdirectories on Windows
+if (process.platform === 'win32') {
+  paths.push(path.join(this.sitePackagesPath, 'win32'));
+  paths.push(path.join(this.sitePackagesPath, 'win32', 'lib'));
+}
+```
+
+### Key Files for Windows CLI Detection
+
+| File | Purpose |
+|------|---------|
+| `apps/frontend/src/main/cli-tool-manager.ts` | Main CLI tool manager (Python, Git, Claude, gh) |
+| `apps/frontend/src/main/utils/windows-paths.ts` | Windows executable path utilities |
+| `apps/frontend/src/main/env-utils.ts` | Environment variable augmentation |
+| `apps/frontend/src/main/python-env-manager.ts` | Python venv/bundled package management |
+| `apps/frontend/src/main/memory-service.ts` | LadybugDB/Graphiti memory queries |
+
+### Development Mode Issue: `real_ladybug` Build Failure
+
+If you see `real_ladybug` build errors in dev mode:
+```
+Building wheel for real_ladybug (pyproject.toml) did not run successfully.
+error: [WinError 2] The system cannot find the file specified
+```
+
+**Cause:** `real_ladybug` (LadybugDB) requires a Rust compiler to build native extensions on Windows.
+
+**Solutions:**
+1. Use the packaged app (uses pre-bundled packages, no compilation needed)
+2. Install Rust: https://rustup.rs/
+3. The memory features will be disabled but other functionality works
+
+### Packaged App Structure (Windows)
+
+When packaged, the app bundles everything needed:
+
+```
+resources/
+├── app.asar              # Packed Electron app
+├── app.asar.unpacked/    # Native modules (node-pty, etc.)
+├── backend/              # Python backend source
+├── python/               # Bundled Python 3.12 runtime
+└── python-site-packages/ # Pre-installed Python packages
+    ├── claude_agent_sdk/
+    ├── pydantic/
+    ├── win32/            # pywin32 (Windows only)
+    ├── win32/lib/        # pywin32 libraries (must be in PYTHONPATH)
+    └── ...
+```
+
+### Testing Windows Fixes
+
+```bash
+# Quick test - run dev mode and check console for:
+# "[CLI Tools] Detected claude: C:\Users\...\npm\claude.cmd (system-path)"
+cd apps/frontend
+npm run dev
+
+# Full test - build installer
+npm run package:win
+# Installer will be in dist/
+```
