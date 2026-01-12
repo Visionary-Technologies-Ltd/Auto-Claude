@@ -56,6 +56,52 @@ function getWindowsCmdExe(): string {
 }
 
 /**
+ * Normalize a Windows CLI path by adding the correct extension if missing.
+ *
+ * On Windows, npm-installed CLIs come with multiple files:
+ * - claude (bash script for Git Bash/Cygwin)
+ * - claude.cmd (Windows batch file)
+ * - claude.ps1 (PowerShell script)
+ *
+ * Users may configure paths without extensions (e.g., "C:\...\npm\claude"),
+ * which causes ENOENT errors when trying to execute them directly with
+ * execFileSync (since Windows can't execute bash scripts natively).
+ *
+ * This function ALWAYS prefers .cmd > .exe > .bat extensions on Windows,
+ * even if an extensionless file exists (which is likely a bash script).
+ *
+ * @param cliPath - The CLI path to normalize
+ * @returns The normalized path with extension, or original path if not on Windows or file not found
+ */
+function normalizeWindowsCliPath(cliPath: string): string {
+  // Only apply on Windows
+  if (process.platform !== 'win32') {
+    return cliPath;
+  }
+
+  // If path already has a Windows executable extension, return as-is
+  const ext = path.extname(cliPath).toLowerCase();
+  if (ext === '.cmd' || ext === '.exe' || ext === '.bat') {
+    return cliPath;
+  }
+
+  // Try common Windows executable extensions in order of preference
+  // .cmd is most common for npm-installed CLIs (claude.cmd, npm.cmd, etc.)
+  // ALWAYS prefer these over extensionless files (which are bash scripts on Windows)
+  const extensions = ['.cmd', '.exe', '.bat'];
+  for (const extension of extensions) {
+    const pathWithExt = cliPath + extension;
+    if (existsSync(pathWithExt)) {
+      return pathWithExt;
+    }
+  }
+
+  // No Windows executable found - return original path
+  // (will either work if it's a native exe or fail with clear error)
+  return cliPath;
+}
+
+/**
  * Supported CLI tools managed by this system
  */
 export type CLITool = 'python' | 'git' | 'gh' | 'claude';
@@ -725,9 +771,11 @@ class CLIToolManager {
           `[Claude CLI] User-configured path failed security validation, ignoring: ${this.userConfig.claudePath}`
         );
       } else {
-        const validation = this.validateClaude(this.userConfig.claudePath);
+        // Normalize Windows paths (add .cmd extension if missing)
+        const normalizedPath = normalizeWindowsCliPath(this.userConfig.claudePath);
+        const validation = this.validateClaude(normalizedPath);
         const result = buildClaudeDetectionResult(
-          this.userConfig.claudePath, validation, 'user-config', 'Using user-configured Claude CLI'
+          normalizedPath, validation, 'user-config', 'Using user-configured Claude CLI'
         );
         if (result) return result;
         console.warn(`[Claude CLI] User-configured path invalid: ${validation.message}`);
@@ -1243,9 +1291,11 @@ class CLIToolManager {
           `[Claude CLI] User-configured path failed security validation, ignoring: ${this.userConfig.claudePath}`
         );
       } else {
-        const validation = await this.validateClaudeAsync(this.userConfig.claudePath);
+        // Normalize Windows paths (add .cmd extension if missing)
+        const normalizedPath = normalizeWindowsCliPath(this.userConfig.claudePath);
+        const validation = await this.validateClaudeAsync(normalizedPath);
         const result = buildClaudeDetectionResult(
-          this.userConfig.claudePath, validation, 'user-config', 'Using user-configured Claude CLI'
+          normalizedPath, validation, 'user-config', 'Using user-configured Claude CLI'
         );
         if (result) return result;
         console.warn(`[Claude CLI] User-configured path invalid: ${validation.message}`);
